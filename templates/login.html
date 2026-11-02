@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>登录 · Vuln KB</title><link rel="stylesheet" href="/static/app.css"></head>
+<body class="login-page">
+<main class="login-card">
+  <a class="brand" href="/login"><span class="brand-mark">V</span><span>VULN<span class="brand-muted">KB</span></span></a>
+  <div class="eyebrow">TEAM KNOWLEDGE BASE</div>
+  <h1>登录漏洞知识库</h1>
+  <p class="muted">搜索已审核的漏洞与可复现材料。</p>
+  {% if error %}<div class="notice error">用户名或密码不正确。</div>{% endif %}
+  <form method="post" action="/login" class="form-stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>用户名<input name="username" autocomplete="username" required autofocus></label>
+    <label>密码<input name="password" type="password" autocomplete="current-password" required></label>
+    <button class="button primary wide">登录</button>
+  </form>
+  <p class="small muted">首次使用：配置 .env 后启动服务，或运行 <code>vuln-kb create-admin</code>。</p>
+</main></body></html>

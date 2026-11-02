@@ -1,0 +1,33 @@
+# Copy selected entries to configs/sources.yml. Only HTTPS hosts explicitly listed
+# here can be queried. `material_url` should point to the PoC/EXP or full repro doc,
+# not a CVE-only advisory page.
+sources:
+  - key: example_poc_feed
+    type: json_feed
+    feed_url: https://security.example.org/poc-feed.json
+    allow_hosts:
+      - security.example.org
+      - files.security.example.org
+    items_path: items
+    fields:
+      id: id
+      title: title
+      url: html_url
+      material_url: download_url
+      revision: commit
+      license: license.spdx_id
+
+  - key: example_rss_poc
+    type: rss
+    feed_url: https://research.example.org/poc.rss
+    allow_hosts:
+      - research.example.org
+      - research-files.example.org
+    fields:
+      id: guid
+      title: title
+      url: link
+      material_url: download_url
+      revision: revision
+      license: license
+

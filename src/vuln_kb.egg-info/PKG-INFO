@@ -1,0 +1,17 @@
+Metadata-Version: 2.4
+Name: vuln-kb
+Version: 0.1.0
+Summary: Team vulnerability knowledge base with source-traceable reproduction materials
+Requires-Python: >=3.12
+Requires-Dist: fastapi<1,>=0.115
+Requires-Dist: uvicorn<1,>=0.30
+Requires-Dist: sqlalchemy<3,>=2.0
+Requires-Dist: alembic<2,>=1.13
+Requires-Dist: httpx<1,>=0.27
+Requires-Dist: jinja2<4,>=3.1
+Requires-Dist: python-multipart<1,>=0.0.9
+Requires-Dist: cryptography<47,>=43
+Requires-Dist: PyYAML<7,>=6.0
+Requires-Dist: packaging<27,>=24
+Provides-Extra: postgres
+Requires-Dist: psycopg[binary]<4,>=3.2; extra == "postgres"

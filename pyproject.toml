@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vuln-kb"
+version = "0.1.0"
+description = "Team vulnerability knowledge base with source-traceable reproduction materials"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn>=0.30,<1",
+  "sqlalchemy>=2.0,<3",
+  "alembic>=1.13,<2",
+  "httpx>=0.27,<1",
+  "jinja2>=3.1,<4",
+  "python-multipart>=0.0.9,<1",
+  "cryptography>=43,<47",
+  "PyYAML>=6.0,<7",
+  "packaging>=24,<27",
+]
+
+[project.optional-dependencies]
+postgres = ["psycopg[binary]>=3.2,<4"]
+
+[project.scripts]
+vuln-kb = "vuln_kb.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+

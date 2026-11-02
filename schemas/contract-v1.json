@@ -1,0 +1,865 @@
+{
+  "$defs": {
+    "Applicability": {
+      "additionalProperties": false,
+      "properties": {
+        "product_ref": {
+          "description": "Stable product ID or contract-local reference",
+          "minLength": 1,
+          "title": "Product Ref",
+          "type": "string"
+        },
+        "version_expression": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version Expression"
+        },
+        "version_status": {
+          "default": "unknown",
+          "enum": [
+            "affected",
+            "not_affected",
+            "unknown",
+            "not_applicable"
+          ],
+          "title": "Version Status",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "product_ref"
+      ],
+      "title": "Applicability",
+      "type": "object"
+    },
+    "EvidenceGrade": {
+      "enum": [
+        "unassessed",
+        "material_reviewed",
+        "evidence_reviewed",
+        "lab_verified"
+      ],
+      "title": "EvidenceGrade",
+      "type": "string"
+    },
+    "EvidenceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "source_sha256": {
+          "pattern": "^[a-fA-F0-9]{64}$",
+          "title": "Source Sha256",
+          "type": "string"
+        },
+        "locator": {
+          "description": "Line range, JSON pointer, or paragraph anchor",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Locator",
+          "type": "string"
+        },
+        "quote": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        },
+        "claim": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Claim",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "source_sha256",
+        "locator",
+        "quote",
+        "claim"
+      ],
+      "title": "EvidenceRef",
+      "type": "object"
+    },
+    "GateResult": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/GateStatus"
+        },
+        "reason_codes": {
+          "items": {
+            "$ref": "#/$defs/ReasonCode"
+          },
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "GateResult",
+      "type": "object"
+    },
+    "GateSet": {
+      "additionalProperties": false,
+      "description": "Persisted six-gate result after deterministic server-side G6 evaluation.",
+      "properties": {
+        "G1_source": {
+          "$ref": "#/$defs/GateResult"
+        },
+        "G2_material": {
+          "$ref": "#/$defs/GateResult"
+        },
+        "G3_prerequisites": {
+          "$ref": "#/$defs/GateResult"
+        },
+        "G4_success_impact": {
+          "$ref": "#/$defs/GateResult"
+        },
+        "G5_usable": {
+          "$ref": "#/$defs/GateResult"
+        },
+        "G6_review_complete": {
+          "$ref": "#/$defs/GateResult"
+        }
+      },
+      "required": [
+        "G1_source",
+        "G2_material",
+        "G3_prerequisites",
+        "G4_success_impact",
+        "G5_usable",
+        "G6_review_complete"
+      ],
+      "title": "GateSet",
+      "type": "object"
+    },
+    "GateStatus": {
+      "enum": [
+        "pass",
+        "fail",
+        "unknown"
+      ],
+      "title": "GateStatus",
+      "type": "string"
+    },
+    "MaterialAssessment": {
+      "additionalProperties": false,
+      "description": "A versioned AI assessment; its G6 outcome is attached only by the server.",
+      "properties": {
+        "material_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Material Id",
+          "type": "string"
+        },
+        "model": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "rubric_version": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Rubric Version",
+          "type": "string"
+        },
+        "decision": {
+          "enum": [
+            "eligible",
+            "needs_review",
+            "reject"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "gates": {
+          "$ref": "#/$defs/ModelGateSet"
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "missing_items": {
+          "items": {
+            "$ref": "#/$defs/MissingItem"
+          },
+          "title": "Missing Items",
+          "type": "array"
+        },
+        "proposed_evidence_grade": {
+          "default": "material_reviewed",
+          "enum": [
+            "material_reviewed",
+            "evidence_reviewed"
+          ],
+          "title": "Proposed Evidence Grade",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        }
+      },
+      "required": [
+        "material_id",
+        "model",
+        "rubric_version",
+        "decision",
+        "gates",
+        "confidence"
+      ],
+      "title": "MaterialAssessment",
+      "type": "object"
+    },
+    "MaterialImplementation": {
+      "additionalProperties": false,
+      "properties": {
+        "material_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Material Id",
+          "type": "string"
+        },
+        "material_kind": {
+          "enum": [
+            "poc",
+            "exp",
+            "procedure",
+            "other"
+          ],
+          "title": "Material Kind",
+          "type": "string"
+        },
+        "language": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Language"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceAssertion"
+        },
+        "sha256": {
+          "pattern": "^[a-fA-F0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "applicability": {
+          "items": {
+            "$ref": "#/$defs/Applicability"
+          },
+          "minItems": 1,
+          "title": "Applicability",
+          "type": "array"
+        },
+        "package": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReproductionPackage"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "review_state": {
+          "$ref": "#/$defs/MaterialReviewState",
+          "default": "pending"
+        },
+        "evidence_grade": {
+          "$ref": "#/$defs/EvidenceGrade",
+          "default": "unassessed"
+        },
+        "gates": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GateSet"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "material_id",
+        "material_kind",
+        "source",
+        "sha256",
+        "size_bytes",
+        "applicability"
+      ],
+      "title": "MaterialImplementation",
+      "type": "object"
+    },
+    "MaterialReviewState": {
+      "enum": [
+        "pending",
+        "reviewing",
+        "approved",
+        "needs_material",
+        "rejected",
+        "review_error",
+        "budget_paused",
+        "superseded"
+      ],
+      "title": "MaterialReviewState",
+      "type": "string"
+    },
+    "MissingItem": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/ReasonCode"
+        },
+        "blocking": {
+          "title": "Blocking",
+          "type": "boolean"
+        },
+        "detail": {
+          "maxLength": 1200,
+          "minLength": 1,
+          "title": "Detail",
+          "type": "string"
+        },
+        "suggested_action": {
+          "anyOf": [
+            {
+              "maxLength": 1200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Suggested Action"
+        }
+      },
+      "required": [
+        "code",
+        "blocking",
+        "detail"
+      ],
+      "title": "MissingItem",
+      "type": "object"
+    },
+    "ModelGateSet": {
+      "additionalProperties": false,
+      "properties": {
+        "G1_source": {
+          "$ref": "#/$defs/GateResult"
+        },
+        "G2_material": {
+          "$ref": "#/$defs/GateResult"
+        },
+        "G3_prerequisites": {
+          "$ref": "#/$defs/GateResult"
+        },
+        "G4_success_impact": {
+          "$ref": "#/$defs/GateResult"
+        },
+        "G5_usable": {
+          "$ref": "#/$defs/GateResult"
+        }
+      },
+      "required": [
+        "G1_source",
+        "G2_material",
+        "G3_prerequisites",
+        "G4_success_impact",
+        "G5_usable"
+      ],
+      "title": "ModelGateSet",
+      "type": "object"
+    },
+    "OrganizationRef": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "aliases": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Aliases",
+          "type": "array"
+        },
+        "external_ids": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "External Ids",
+          "type": "object"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "OrganizationRef",
+      "type": "object"
+    },
+    "ProductRef": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "organization": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OrganizationRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "aliases": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Aliases",
+          "type": "array"
+        },
+        "ecosystem": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ecosystem"
+        },
+        "external_ids": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "External Ids",
+          "type": "object"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "ProductRef",
+      "type": "object"
+    },
+    "PublicationState": {
+      "enum": [
+        "discovered",
+        "prefiltered",
+        "material_ready",
+        "in_review",
+        "needs_material",
+        "published",
+        "needs_revalidation",
+        "rejected",
+        "withdrawn"
+      ],
+      "title": "PublicationState",
+      "type": "string"
+    },
+    "Reason": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/ReasonCode"
+        },
+        "blocking": {
+          "title": "Blocking",
+          "type": "boolean"
+        },
+        "retryable": {
+          "default": false,
+          "title": "Retryable",
+          "type": "boolean"
+        },
+        "detail": {
+          "maxLength": 1200,
+          "minLength": 1,
+          "title": "Detail",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "blocking",
+        "detail"
+      ],
+      "title": "Reason",
+      "type": "object"
+    },
+    "ReasonCode": {
+      "enum": [
+        "source_material_unavailable",
+        "source_not_traceable",
+        "source_host_not_allowed",
+        "material_empty",
+        "material_missing",
+        "material_incomplete",
+        "scenario_unclear",
+        "success_criteria_missing",
+        "impact_unsupported",
+        "usage_unclear",
+        "product_unidentified",
+        "product_ambiguous",
+        "version_unknown",
+        "evidence_quote_invalid",
+        "evidence_coverage_incomplete",
+        "material_hash_mismatch",
+        "model_output_invalid",
+        "model_rejected",
+        "model_unavailable",
+        "budget_paused",
+        "duplicate_material",
+        "no_qualified_material",
+        "policy_version_unsupported"
+      ],
+      "title": "ReasonCode",
+      "type": "string"
+    },
+    "ReproductionPackage": {
+      "additionalProperties": false,
+      "properties": {
+        "prerequisites": {
+          "maxLength": 20000,
+          "minLength": 1,
+          "title": "Prerequisites",
+          "type": "string"
+        },
+        "instructions": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Instructions",
+          "type": "string"
+        },
+        "success_criteria": {
+          "maxLength": 10000,
+          "minLength": 1,
+          "title": "Success Criteria",
+          "type": "string"
+        },
+        "tested_versions": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tested Versions"
+        },
+        "execution_recorded": {
+          "default": false,
+          "title": "Execution Recorded",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "prerequisites",
+        "instructions",
+        "success_criteria"
+      ],
+      "title": "ReproductionPackage",
+      "type": "object"
+    },
+    "SourceAssertion": {
+      "additionalProperties": false,
+      "properties": {
+        "source_key": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Source Key",
+          "type": "string"
+        },
+        "external_id": {
+          "maxLength": 800,
+          "minLength": 1,
+          "title": "External Id",
+          "type": "string"
+        },
+        "url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "maxLength": 240,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Revision"
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[a-fA-F0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sha256"
+        },
+        "license_hint": {
+          "anyOf": [
+            {
+              "maxLength": 300,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "License Hint"
+        },
+        "public": {
+          "default": true,
+          "title": "Public",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "source_key",
+        "external_id",
+        "url"
+      ],
+      "title": "SourceAssertion",
+      "type": "object"
+    },
+    "VulnerabilityRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "1.0.0",
+          "default": "1.0.0",
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "record_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Record Id",
+          "type": "string"
+        },
+        "entry_type": {
+          "default": "case",
+          "enum": [
+            "case",
+            "method"
+          ],
+          "title": "Entry Type",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "summary": {
+          "default": "",
+          "maxLength": 10000,
+          "title": "Summary",
+          "type": "string"
+        },
+        "products": {
+          "items": {
+            "$ref": "#/$defs/ProductRef"
+          },
+          "title": "Products",
+          "type": "array"
+        },
+        "applicability": {
+          "items": {
+            "$ref": "#/$defs/Applicability"
+          },
+          "title": "Applicability",
+          "type": "array"
+        },
+        "cve_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Cve Ids",
+          "type": "array"
+        },
+        "cwe_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Cwe Ids",
+          "type": "array"
+        },
+        "vulnerability_type": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vulnerability Type"
+        },
+        "publication_state": {
+          "$ref": "#/$defs/PublicationState",
+          "default": "discovered"
+        },
+        "publication_revision": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Publication Revision",
+          "type": "integer"
+        },
+        "materials": {
+          "items": {
+            "$ref": "#/$defs/MaterialImplementation"
+          },
+          "title": "Materials",
+          "type": "array"
+        },
+        "source_assertions": {
+          "items": {
+            "$ref": "#/$defs/SourceAssertion"
+          },
+          "title": "Source Assertions",
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "review_assessments": {
+          "items": {
+            "$ref": "#/$defs/MaterialAssessment"
+          },
+          "title": "Review Assessments",
+          "type": "array"
+        },
+        "reasons": {
+          "items": {
+            "$ref": "#/$defs/Reason"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "policy_version": {
+          "default": "admission-1.2",
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Policy Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "record_id",
+        "title"
+      ],
+      "title": "VulnerabilityRecord",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "contract_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "records": {
+      "items": {
+        "$ref": "#/$defs/VulnerabilityRecord"
+      },
+      "title": "Records",
+      "type": "array"
+    }
+  },
+  "required": [
+    "records"
+  ],
+  "title": "ContractEnvelope",
+  "type": "object"
+}

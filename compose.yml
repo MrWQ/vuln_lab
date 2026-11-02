@@ -1,0 +1,91 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: vulnkb
+      POSTGRES_USER: vulnkb
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vulnkb -d vulnkb"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+  migrate:
+    build: .
+    command: ["alembic", "upgrade", "head"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://vulnkb:${POSTGRES_PASSWORD}@db:5432/vulnkb
+      AUTO_CREATE_SCHEMA: "false"
+      OBJECT_STORE_DIR: /data/objects
+      EXPORT_DIR: /data/exports
+    volumes:
+      - objects:/data/objects
+      - exports:/data/exports
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+  web:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://vulnkb:${POSTGRES_PASSWORD}@db:5432/vulnkb
+      AUTO_CREATE_SCHEMA: "false"
+      OBJECT_STORE_DIR: /data/objects
+      EXPORT_DIR: /data/exports
+    volumes:
+      - objects:/data/objects
+      - exports:/data/exports
+    ports:
+      - "8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+  worker:
+    build: .
+    command: ["python", "-m", "vuln_kb.worker"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://vulnkb:${POSTGRES_PASSWORD}@db:5432/vulnkb
+      AUTO_CREATE_SCHEMA: "false"
+      OBJECT_STORE_DIR: /data/objects
+      EXPORT_DIR: /data/exports
+    volumes:
+      - objects:/data/objects
+      - exports:/data/exports
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+  backup:
+    image: postgres:16-alpine
+    profiles: ["tools"]
+    environment:
+      PGHOST: db
+      PGDATABASE: vulnkb
+      PGUSER: vulnkb
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      BACKUP_STAMP: ${BACKUP_STAMP:-manual}
+    volumes:
+      - objects:/data/objects:ro
+      - ./backups:/backup
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["sh", "-c"]
+    command: ["pg_dump -Fc -f /backup/$${BACKUP_STAMP}.dump && tar -czf /backup/$${BACKUP_STAMP}-objects.tgz -C /data/objects ."]
+volumes:
+  pgdata:
+  objects:
+  exports:
+

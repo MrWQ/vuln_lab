@@ -1,0 +1,2 @@
+[console_scripts]
+vuln-kb = vuln_kb.cli:main

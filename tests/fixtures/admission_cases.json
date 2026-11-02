@@ -1,0 +1,62 @@
+{
+  "fixture_version": "1.0.0",
+  "description": "Synthetic offline cases; no exploit code, network access, or target execution.",
+  "cases": [
+    {
+      "id": "complete-procedure-unknown-version",
+      "source": {"source_key": "fixture", "external_id": "good-1", "url": "https://fixture.invalid/good-1", "revision": "r1", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "text": "Product: Acme Cache. Prerequisite: local test account. Steps: configure local fixture, submit benign marker, inspect local test output. Expected: fixture records marker. Impact: unsafe access to the local fixture record."},
+      "products": [{"name": "Acme Cache", "organization": "Acme"}],
+      "materials": [{"id": "material-good-1", "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "kind": "procedure", "instructions": "configure local fixture; submit benign marker; inspect local test output", "success_criteria": "fixture records marker", "impact": "unsafe access to local test record", "applicability": ["Acme Cache"]}],
+      "evidence_quotes": ["Product: Acme Cache", "Expected: fixture records marker"],
+      "expected": {"publication_state": "published", "material_state": "approved", "reason_codes": [], "search_products": ["Acme Cache"], "material_count": 1}
+    },
+    {
+      "id": "empty-repository",
+      "source": {"source_key": "github_repo", "external_id": "empty", "url": "https://github.com/example/empty", "revision": "abc", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "text": ""},
+      "products": [], "materials": [], "evidence_quotes": [],
+      "expected": {"publication_state": "needs_material", "material_state": "needs_material", "reason_codes": ["material_missing"], "search_products": [], "material_count": 0}
+    },
+    {
+      "id": "stale-material-link",
+      "source": {"source_key": "fixture", "external_id": "stale-1", "url": "https://fixture.invalid/removed", "revision": null, "sha256": null, "fetch_error": "404", "text": null},
+      "products": [], "materials": [], "evidence_quotes": [],
+      "expected": {"publication_state": "needs_material", "material_state": "review_error", "reason_codes": ["source_material_unavailable"], "retryable": true, "search_products": [], "material_count": 0}
+    },
+    {
+      "id": "ambiguous-product-name",
+      "source": {"source_key": "fixture", "external_id": "ambiguous-1", "url": "https://fixture.invalid/ambiguous", "revision": "r1", "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "text": "Product: Widget. See local synthetic procedure."},
+      "products": [{"name": "Widget", "organization": "Acme"}, {"name": "Widget", "organization": "Beta"}],
+      "materials": [{"id": "material-ambiguous", "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "kind": "procedure", "instructions": "local synthetic procedure", "success_criteria": "fixture marker", "impact": "local fixture impact"}],
+      "evidence_quotes": ["Product: Widget"],
+      "expected": {"publication_state": "in_review", "material_state": "needs_material", "reason_codes": ["product_ambiguous"], "search_products": [], "material_count": 0}
+    },
+    {
+      "id": "fabricated-evidence-quote",
+      "source": {"source_key": "fixture", "external_id": "fake-quote-1", "url": "https://fixture.invalid/fake", "revision": "r1", "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "text": "Product: Acme Cache. Local steps are intentionally incomplete."},
+      "products": [{"name": "Acme Cache", "organization": "Acme"}],
+      "materials": [{"id": "material-fake-quote", "sha256": "1111111111111111111111111111111111111111111111111111111111111111", "kind": "procedure", "instructions": "invented full procedure", "success_criteria": "invented success", "impact": "invented impact"}],
+      "evidence_quotes": ["The source proves arbitrary remote access and successful extraction"],
+      "expected": {"publication_state": "needs_material", "material_state": "needs_material", "reason_codes": ["evidence_quote_invalid"], "search_products": [], "material_count": 0}
+    },
+    {
+      "id": "duplicate-repost-same-material",
+      "sources": [
+        {"source_key": "fixture", "external_id": "post-a", "url": "https://fixture.invalid/post-a", "revision": "a1", "sha256": "2222222222222222222222222222222222222222222222222222222222222222"},
+        {"source_key": "fixture", "external_id": "post-b", "url": "https://fixture.invalid/post-b", "revision": "b1", "sha256": "2222222222222222222222222222222222222222222222222222222222222222"}
+      ],
+      "products": [{"name": "Acme Cache", "organization": "Acme"}],
+      "materials": [{"id": "material-dedup", "sha256": "2222222222222222222222222222222222222222222222222222222222222222", "kind": "procedure", "instructions": "same synthetic procedure", "success_criteria": "same local marker", "impact": "same local fixture impact", "applicability": ["Acme Cache"]}],
+      "expected": {"publication_state": "published", "material_state": "approved", "reason_codes": ["duplicate_material"], "source_assertion_count": 2, "search_products": ["Acme Cache"], "material_count": 1}
+    },
+    {
+      "id": "multiple-products-multiple-implementations",
+      "source": {"source_key": "fixture", "external_id": "multi-1", "url": "https://fixture.invalid/multi", "revision": "r1", "sha256": "3333333333333333333333333333333333333333333333333333333333333333", "text": "Synthetic shared report with two independent local procedures."},
+      "products": [{"name": "Acme Cache", "organization": "Acme"}, {"name": "Beta Cache", "organization": "Beta"}],
+      "materials": [
+        {"id": "material-a", "sha256": "4444444444444444444444444444444444444444444444444444444444444444", "kind": "procedure", "instructions": "procedure for Acme local fixture", "success_criteria": "Acme local marker", "impact": "Acme fixture impact", "applicability": ["Acme Cache"]},
+        {"id": "material-b", "sha256": "5555555555555555555555555555555555555555555555555555555555555555", "kind": "procedure", "instructions": "procedure for Beta local fixture", "success_criteria": "Beta local marker", "impact": "Beta fixture impact", "applicability": ["Beta Cache"]}
+      ],
+      "expected": {"publication_state": "published", "material_state": "approved", "reason_codes": [], "search_products": ["Acme Cache", "Beta Cache"], "material_count": 2}
+    }
+  ]
+}
