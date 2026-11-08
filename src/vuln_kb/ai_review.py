@@ -266,7 +266,9 @@ def _reserve_review(db: Session, material: MaterialVariant, source_sha256: str, 
 
 def _record_provider_failure(db: Session, task: AIReviewTask, usage_record: AIUsageRecord,
                              error: ProviderFailure) -> None:
-    uncertain = error.category in {"timeout", "provider_unavailable", "connection_error"}
+    # A malformed response can still have consumed model tokens; without usage
+    # metadata its charge is unknown and must remain reserved.
+    uncertain = error.category in {"timeout", "provider_unavailable", "connection_error", "json_mode_unsupported"}
     usage_record.state = ("uncertain" if uncertain else
                           "settled" if error.category == "rate_limited" else "released")
     if usage_record.state == "settled":

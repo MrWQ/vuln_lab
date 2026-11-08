@@ -1,0 +1,279 @@
+# CVE-2026-120218 — TypeMill stored XSS via SVG XSLT processing instruction
+
+**English** | [Português do Brasil](README.pt-BR.md)
+
+[![CVE](https://img.shields.io/badge/CVE-2026--120218-red)](https://www.cve.org/CVERecord?id=CVE-2026-120218)
+[![VulDB](https://img.shields.io/badge/VulDB-VDB--429569-orange)](https://vuldb.com/vuln/429569)
+[![VulDB Submit](https://img.shields.io/badge/VulDB_Submit-992817-blue)](https://vuldb.com/submit/992817)
+[![GHSA](https://img.shields.io/badge/GHSA-994f--577q--hhph-purple)](https://github.com/typemill/typemill/security/advisories/GHSA-994f-577q-hhph)
+[![Fixed](https://img.shields.io/badge/fixed_in-2.27.0-brightgreen)](https://github.com/typemill/typemill/releases/tag/v2.27.0)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
+Technical analysis, safe proof-of-concept material, and reproducible source checks for a stored cross-site scripting vulnerability in TypeMill's SVG sanitizer.
+
+> [!IMPORTANT]
+> VulDB assigned `CVE-2026-120218` on October 31, 2026. At the time this repository was prepared, the CVE Program API had not yet published the canonical record and returned `CVE_RECORD_DNE`. [VDB-429569](https://vuldb.com/vuln/429569) is the current public assignment source. This notice should be removed when the CVE record becomes available.
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Product | [TypeMill CMS](https://github.com/typemill/typemill) |
+| Verified affected range | `2.6.0` through `2.26.0` |
+| Tested release | `v2.26.0` (`050cc875a3fcb9de5abc8da08b89895bdfea7865`) |
+| Fixed version | `2.27.0` |
+| Security fix | [`9ca43c4`](https://github.com/typemill/typemill/commit/9ca43c4a7b6764c5a6ac11a2ccc099b036ee3cef) |
+| Component | `system/typemill/Models/SvgSanitizer.php` |
+| Weakness | CWE-79 — Improper Neutralization of Input During Web Page Generation |
+| Required privilege | Authenticated contributor or another role with `mycontent:create` |
+| Configuration | **Allow svg** must be enabled |
+| User interaction | A privileged user opens a direct stored SVG URL |
+| VulDB score | CVSS 3.1 `3.5` |
+| Researcher assessment | CVSS 3.1 `8.7` — scope changed, high confidentiality/integrity impact |
+| Researcher | Fernando Viana — [Capivara Research](https://github.com/capivara-research) |
+
+## Executive summary
+
+TypeMill versions containing the vulnerable sanitizer checked SVG elements and attributes against allowlists, but did not inspect XML processing instructions. An authenticated contributor could upload a document containing an `xml-stylesheet` instruction whose XSLT generated HTML and JavaScript.
+
+The processing instruction survived sanitization, publication, and storage. TypeMill then served the document from the application origin as `image/svg+xml`. When a privileged user opened the direct **Live**, **Original**, or **Thumb** URL in a browser with SVG XSLT support, the transformed JavaScript ran with the TypeMill origin.
+
+The coordinated local validation crossed the contributor-to-administrator trust boundary: same-origin JavaScript used the administrator's existing session to create a harmless marker account. The public PoC is deliberately safer. It only changes text inside its own document and sets a DOM attribute; it does not access cookies, call application APIs, or send network requests.
+
+## Why this matters
+
+Stored XSS is not limited to stealing a readable cookie. JavaScript executing in the application's origin can make authenticated same-origin requests, even when the session cookie is `HttpOnly`. The browser attaches the victim's session automatically.
+
+In the validated chain, the attacker starts with content-level privileges while the victim has administrative privileges:
+
+```text
+contributor uploads crafted SVG
+                |
+                v
+TypeMill checks elements and attributes only
+                |
+                v
+xml-stylesheet processing instruction survives
+                |
+                v
+SVG is published as same-origin image/svg+xml
+                |
+                v
+administrator opens a direct media URL
+                |
+                v
+XSLT emits JavaScript in the TypeMill origin
+                |
+                v
+script can perform actions authorized to the administrator
+```
+
+## Preconditions and limits
+
+All of the following are required for the demonstrated chain:
+
+1. An administrator or manager enables TypeMill's **Allow svg** option. It is disabled by default.
+2. The attacker controls an authenticated contributor account, or another account with `mycontent:create`.
+3. The SVG is uploaded and published through the normal image workflow.
+4. A privileged user opens the direct SVG resource, rather than viewing it only through an `<img>` element.
+5. The victim's browser processes SVG XSLT stylesheets. Browser support varies and continues to change.
+
+These conditions reduce exposure but do not make the sanitizer bypass safe. SVG upload is an official feature, the sanitizer is a security boundary, and the media interface exposes direct links to the stored resources.
+
+## Root cause
+
+The affected `SvgSanitizer` used `DOMDocument::getElementsByTagName("*")` to enumerate XML elements:
+
+```php
+$allElements = $this->xmlDoc->getElementsByTagName("*");
+
+for ($i = 0; $i < $allElements->length; $i++) {
+    $currentNode = $allElements->item($i);
+    // Element and attribute allowlist checks.
+}
+```
+
+An XML processing instruction is a `DOMProcessingInstruction`, not a DOM element. It is absent from that list and therefore survives the allowlist pass and later `saveXML()` serialization:
+
+```xml
+<?xml-stylesheet type="text/xsl" href="data:text/xsl;base64,..."?>
+```
+
+The self-contained data URI avoids any dependency on an attacker-controlled server or a second uploaded file.
+
+### Vulnerable data flow
+
+1. `POST /api/v1/image` accepts image data for accounts authorized with `mycontent:create`.
+2. The contributor role receives that permission through TypeMill's role configuration.
+3. `ControllerApiImage::saveImage()` preserves the SVG format when `allowsvg` is active.
+4. `Media::checkAllowedExtension()` invokes `SvgSanitizer`.
+5. The sanitizer checks elements and attributes but misses the processing instruction.
+6. `PUT /api/v1/image` publishes the generated media files.
+7. The stored SVG is served from the TypeMill origin as active XML.
+
+## Safe reproduction
+
+The [`poc/`](poc/) directory contains:
+
+- [`check_source.py`](poc/check_source.py), a read-only source checker;
+- [`sanitizer_repro.php`](poc/sanitizer_repro.php), a direct harness for TypeMill's real sanitizer;
+- [`payload.svg`](poc/payload.svg), a harmless and self-contained browser marker; and
+- a [step-by-step laboratory guide](poc/README.md).
+
+### Static check
+
+```bash
+python3 poc/check_source.py /path/to/typemill
+```
+
+The checker exits with:
+
+| Code | Meaning |
+|---:|---|
+| `0` | All controls introduced by the `2.27.0` fix are present |
+| `1` | One or more controls are absent; the source matches the vulnerable pattern |
+| `2` | Invalid path or usage error |
+
+### Containerized vulnerable-source check
+
+```bash
+docker build -t cve-2026-120218 .
+docker run --rm cve-2026-120218
+```
+
+The image pins the official `v2.26.0` tag. Its wrapper treats detection of the expected vulnerable pattern as a successful container test.
+
+### Direct sanitizer check
+
+In a TypeMill source tree with its PHP dependencies available:
+
+```bash
+php poc/sanitizer_repro.php \
+  /path/to/typemill \
+  poc/payload.svg \
+  /tmp/payload.sanitized.svg
+```
+
+On the vulnerable release, the expected diagnostic is:
+
+```text
+Processing instruction survived sanitization.
+```
+
+On `2.27.0`, it is:
+
+```text
+Processing instruction was removed.
+```
+
+The detailed browser procedure and troubleshooting notes are in [`poc/README.md`](poc/README.md).
+
+## Expected results
+
+| Release | Source checker | Sanitizer result | Browser result with XSLT support |
+|---|---|---|---|
+| `2.6.0`–`2.26.0` | Fix controls missing | `xml-stylesheet` remains | Visible JavaScript marker executes |
+| `2.27.0+` | Fix controls present | Processing instruction removed | Marker does not execute |
+
+## Impact
+
+Successful exploitation gives attacker-controlled JavaScript the victim's same-origin browser authority. Depending on the victim's role, the script can potentially:
+
+- read authenticated same-origin API responses;
+- create or modify users;
+- change system settings;
+- modify or delete content and media; and
+- establish persistent administrative access.
+
+The private validation created only a non-administrator marker account and performed no destructive action or data exfiltration. This repository does not include the administrative action payload.
+
+## Severity: why two scores are shown
+
+VulDB currently publishes CVSS 3.1 `3.5` with vector:
+
+```text
+CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:N/I:L/A:N/E:P/RL:O/RC:C
+```
+
+The original researcher assessment was `8.7`:
+
+```text
+CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:C/C:H/I:H/A:N
+```
+
+The difference is analytical, not a difference in the root cause. VulDB models low integrity impact with unchanged scope. The researcher assessment models the browser script crossing from a contributor-controlled object into an administrator's security authority, with access to privileged same-origin APIs. Consumers should use the score required by their vulnerability-management policy and evaluate the actual enabled features, roles, browser support, and exposed data in their environment.
+
+## Fix analysis
+
+Upstream commit [`9ca43c4`](https://github.com/typemill/typemill/commit/9ca43c4a7b6764c5a6ac11a2ccc099b036ee3cef) corrected the issue by:
+
+1. parsing XML with `LIBXML_NONET`;
+2. returning the result of `loadXML()`;
+3. rejecting documents containing a DOCTYPE/DTD;
+4. recursively removing processing instructions and comments; and
+5. consolidating SVG upload paths around the same sanitization routine.
+
+The patch was committed on September 18, 2026 and released in [`v2.27.0`](https://github.com/typemill/typemill/releases/tag/v2.27.0).
+
+## Remediation and defense in depth
+
+Upgrade to TypeMill `2.27.0` or later.
+
+If an immediate upgrade is impossible:
+
+- disable **Allow svg**;
+- inventory and remove suspicious SVG files uploaded before the setting changed;
+- restrict media creation privileges;
+- serve user-controlled media from a separate, cookie-less origin; or
+- force untrusted SVG to download with `Content-Disposition: attachment`.
+
+Additional hardening includes a restrictive CSP for active image responses, `X-Content-Type-Options: nosniff`, regression tests for non-element XML nodes, and rasterization of untrusted vector images.
+
+## Disclosure timeline
+
+| Date | Event |
+|---|---|
+| 2026-08-21 | Vulnerability validated against TypeMill `2.26.0` and reported privately by email |
+| 2026-09-17 | Private GitHub advisory workspace `GHSA-994f-577q-hhph` opened |
+| 2026-09-18 | Upstream security patch committed and TypeMill `2.27.0` released |
+| 2026-10-24 | Safe GHSA research repository published after the fix |
+| 2026-10-31 | VulDB accepted submission `#992817`, created `VDB-429569`, and assigned `CVE-2026-120218` |
+
+## Repository map
+
+```text
+.
+├── README.md
+├── README.pt-BR.md
+├── CITATION.cff
+├── CONTRIBUTING.md
+├── Dockerfile
+├── LICENSE
+├── SECURITY.md
+├── evidence/
+│   ├── official-record-summary.md
+│   └── validated-results.md
+└── poc/
+    ├── README.md
+    ├── check_source.py
+    ├── payload.svg
+    └── sanitizer_repro.php
+```
+
+## References
+
+- [VulDB VDB-429569](https://vuldb.com/vuln/429569)
+- [VulDB submission #992817](https://vuldb.com/submit/992817)
+- [TypeMill repository](https://github.com/typemill/typemill)
+- [TypeMill 2.27.0 release](https://github.com/typemill/typemill/releases/tag/v2.27.0)
+- [Security patch](https://github.com/typemill/typemill/commit/9ca43c4a7b6764c5a6ac11a2ccc099b036ee3cef)
+- GitHub Private Vulnerability Report `GHSA-994f-577q-hhph` ([vendor advisory workspace](https://github.com/typemill/typemill/security/advisories/GHSA-994f-577q-hhph); access may be restricted while the advisory remains private)
+- [CWE-79](https://cwe.mitre.org/data/definitions/79.html)
+
+## Credits and citation
+
+Discovered, validated, and reported by **Fernando Viana — Capivara Research** (`capivara-research`). See [`CITATION.cff`](CITATION.cff) for machine-readable citation metadata.
+
+## Legal and ethical use
+
+Use this material only on systems you own or are explicitly authorized to test. The executable artifacts are designed for source inspection and isolated, disposable local laboratories. Do not upload the payload to third-party installations.
