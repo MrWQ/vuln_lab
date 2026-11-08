@@ -43,9 +43,12 @@ class Settings:
     ai_base_url: str = os.getenv("AI_BASE_URL", "")
     ai_model: str = os.getenv("AI_MODEL", "")
     ai_api_key: str = os.getenv("AI_API_KEY", "")
+    ai_allowed_hosts: tuple[str, ...] = tuple(
+        host.strip().lower().rstrip(".") for host in os.getenv("AI_ALLOWED_HOSTS", "").split(",") if host.strip())
     ai_review_enabled: bool = _bool("AI_REVIEW_ENABLED")
     ai_auto_publish: bool = _bool("AI_AUTO_PUBLISH")
     ai_daily_budget_usd: float = float(os.getenv("AI_DAILY_BUDGET_USD", "5"))
+    ai_max_review_source_chars: int = int(os.getenv("AI_MAX_REVIEW_SOURCE_CHARS", "240000"))
     public_base_url: str = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000")
     session_hours: int = int(os.getenv("SESSION_HOURS", "12"))
     auto_create_schema: bool = _bool("AUTO_CREATE_SCHEMA", True)

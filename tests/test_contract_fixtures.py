@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import unittest
 from pathlib import Path
 
 from vuln_kb.adapters.contracts import SourceRef, RawSnapshot
+from vuln_kb.ai_review import build_source_chunks
 from vuln_kb.domain.contracts import ContractEnvelope, GateSet, GateResult, GateStatus, MaterialAssessment
 from vuln_kb.ingestion import _gate_passed
 from vuln_kb.domain.contracts import (
@@ -147,6 +149,13 @@ class ContractFixtureTests(unittest.TestCase):
         ref = SourceRef("fixture", "good", "Synthetic procedure", "https://github.com/example/fixture",
                         {"allowed_hosts": ["github.com"]})
         snapshot = RawSnapshot(ref, source_text.encode(), "fixture-rev")
+        source_sha256 = hashlib.sha256(source_text.encode()).hexdigest()
+        chunk = build_source_chunks(source_text)[0]
+        def citation(quote):
+            start = source_text.index(quote)
+            line = source_text.count("\n", 0, start) + 1
+            return {"chunk_id": chunk["chunk_id"], "start_line": line,
+                    "end_line": line + quote.count("\n"), "source_sha256": source_sha256, "quote": quote}
         result = {
             "title": "Synthetic local fixture", "summary": "Synthetic contract sample",
             "company": "Acme", "product": "Acme Cache", "version_expression": None,
@@ -156,15 +165,18 @@ class ContractFixtureTests(unittest.TestCase):
             "impact": "Impact is unauthorized local record access.", "confidence": 0.9,
             "gates": {name: "pass" for name in ("G1_source", "G2_material", "G3_prerequisites", "G4_success_impact", "G5_usable")},
             "claim_evidence": {
-                "product": ["Product is Acme Cache"], "impact": ["Impact is unauthorized local record access"],
-                "prerequisites": ["Prerequisite is a local test account"],
-                "instructions": ["Run the documented steps against the local fixture only"],
-                "success_criteria": ["Expected output is a fixture marker"],
+                "product": [citation("Product is Acme Cache")],
+                "impact": [citation("Impact is unauthorized local record access")],
+                "prerequisites": [citation("Prerequisite is a local test account")],
+                "instructions": [citation("Run the documented steps against the local fixture only")],
+                "success_criteria": [citation("Expected output is a fixture marker")],
             },
         }
         passed, _, failures = _gate_passed(result, source_text, snapshot, len(source_text))
         self.assertTrue(passed, failures)
-        result["claim_evidence"]["impact"] = ["The source proves arbitrary remote access"]
+        fabricated = citation("Impact is unauthorized local record access")
+        fabricated["quote"] = "The source proves arbitrary remote access"
+        result["claim_evidence"]["impact"] = [fabricated]
         passed, _, failures = _gate_passed(result, source_text, snapshot, len(source_text))
         self.assertFalse(passed)
         self.assertTrue(any("impact 缺少精确原文证据" in failure for failure in failures))

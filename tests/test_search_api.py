@@ -90,6 +90,8 @@ class SearchApiTests(unittest.TestCase):
         body = results.json()
         self.assertEqual(body["total"], 1)
         self.assertEqual(body["items"][0]["material_count"], 1)
+        self.assertEqual(body["items"][0]["evidence_grades"], ["material_reviewed"])
+        self.assertEqual(body["items"][0]["products"][0]["evidence_grades"], ["material_reviewed"])
         self.assertEqual(body["items"][0]["products"][0]["version_status"], "affected")
         fuzzy = asyncio.run(self._request("/api/search?product=Widget%20Classic"))
         self.assertEqual(fuzzy.status_code, 200, fuzzy.text)

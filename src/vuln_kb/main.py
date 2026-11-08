@@ -9,7 +9,6 @@ from typing import Literal
 from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
-import httpx
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -21,9 +20,10 @@ from vuln_kb.adapters.exploitdb import ExploitDBAdapter
 from vuln_kb.adapters.github import GitHubAdapter
 from vuln_kb.adapters.registry import registered_source_keys
 from vuln_kb.config import settings
+from vuln_kb.ai_providers import OpenAICompatibleProvider, ProviderFailure, validate_provider_host
 from vuln_kb.database import Base, SessionLocal, engine, ensure_database_parent, get_db
 from vuln_kb.exports import publish_export
-from vuln_kb.models import (AIProviderConfig, CoveragePartition, Job, KnowledgeEntry, MaterialVariant,
+from vuln_kb.models import (AIProviderConfig, AIReviewTask, CoveragePartition, Job, KnowledgeEntry, MaterialVariant,
                             Organization, OrganizationAlias, Product, ProductAlias, ProductIdentifier,
                             ProductMaterialApplicability, ProductVulnerability, Session, User)
 from vuln_kb.security import (create_session, current_user, encrypt_secret, hash_password,
@@ -214,6 +214,9 @@ def api_search(q: str = "", company: str = "", product: str = "", version: str =
             org = product_obj.organization.name if product_obj.organization else "未知厂商"
             materials = _applicable_materials(db, entry.id, relation.product_id, version)
             entry_material_ids.update(material.id for material in materials)
+            evidence_grades = sorted({material.evidence_grade for material in materials},
+                                     key=lambda grade: {"lab_verified": 0, "evidence_reviewed": 1,
+                                                        "material_reviewed": 2}.get(grade, 3))
             version_status = relation.version_status
             if version:
                 vuln_status = match_version(product_obj.ecosystem, version, relation.version_expression)
@@ -226,13 +229,18 @@ def api_search(q: str = "", company: str = "", product: str = "", version: str =
             products.append({"company": org, "product": product_obj.name,
                              "product_id": relation.product_id, "version": relation.version_expression,
                              "version_status": version_status, "impact": relation.impact,
-                             "match_confidence": relation.match_confidence, "material_count": len(materials)})
+                             "match_confidence": relation.match_confidence, "material_count": len(materials),
+                             "evidence_grades": evidence_grades})
         primary = products[0] if products else {"company": "未知厂商", "product": "未知产品",
                                                  "version": None, "version_status": "unknown",
-                                                 "impact": "", "match_confidence": 0}
+                                                 "impact": "", "match_confidence": 0, "evidence_grades": []}
         out.append({"id": entry.id, "title": entry.title, "summary": entry.summary, "cve_id": entry.cve_id,
                     "vuln_type": entry.vuln_type, **primary, "products": products,
-                    "material_count": len(entry_material_ids), "url": f"/v/{entry.id}"})
+                    "material_count": len(entry_material_ids), "evidence_grades": sorted(
+                        {grade for product_row in products for grade in product_row["evidence_grades"]},
+                        key=lambda grade: {"lab_verified": 0, "evidence_reviewed": 1,
+                                           "material_reviewed": 2}.get(grade, 3)),
+                    "url": f"/v/{entry.id}"})
     return {"items": out, "total": count, "limit": limit, "next_cursor": next_cursor}
 
 
@@ -453,7 +461,9 @@ def admin_page(request: Request, user: User = Depends(_editor_user), db: DBSessi
     candidates = db.scalars(select(KnowledgeEntry).where(KnowledgeEntry.status == "candidate")
                             .order_by(KnowledgeEntry.first_seen_at.desc()).limit(50)).all()
     users = db.scalars(select(User).order_by(User.username)).all()
-    context = page_context(request, user=user, ai_config=config, jobs=jobs, candidates=candidates, users=users)
+    review_tasks = db.scalars(select(AIReviewTask).order_by(AIReviewTask.created_at.desc()).limit(30)).all()
+    context = page_context(request, user=user, ai_config=config, jobs=jobs, candidates=candidates, users=users,
+                           review_tasks=review_tasks)
     return templates.TemplateResponse(request=request, name="admin.html", context=context)
 
 
@@ -521,6 +531,8 @@ class AIConfigRequest(BaseModel):
     daily_budget_usd: float = Field(default=5, ge=0, le=10000)
     input_price_per_million: float = Field(default=0, ge=0)
     output_price_per_million: float = Field(default=0, ge=0)
+    requests_per_minute: int = Field(default=60, ge=1, le=600)
+    max_concurrent_reviews: int = Field(default=2, ge=1, le=32)
 
 
 @app.put("/api/admin/ai")
@@ -529,7 +541,10 @@ def save_ai_config(payload: AIConfigRequest, request: Request, user: User = Depe
     parsed = urlparse(payload.base_url)
     if parsed.scheme not in {"https", "http"} or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise HTTPException(status_code=400, detail="模型 URL 必须是有效的 http(s) 地址，且不能包含凭据、查询参数或片段")
-    host = (parsed.hostname or "").lower()
+    try:
+        host = validate_provider_host(payload.base_url, settings.ai_allowed_hosts)
+    except ProviderFailure as exc:
+        raise HTTPException(status_code=400, detail=f"{exc.message}（与来源抓取白名单独立配置）") from exc
     if payload.enabled and host not in {"localhost", "127.0.0.1", "::1"} and (payload.input_price_per_million <= 0 or payload.output_price_per_million <= 0):
         raise HTTPException(status_code=400, detail="远程 Provider 需填写正数输入/输出价格，以便执行每日预算限制")
     if payload.enabled and (not payload.base_url or not payload.model or not (payload.api_key or "")):
@@ -545,12 +560,16 @@ def save_ai_config(payload: AIConfigRequest, request: Request, user: User = Depe
     if payload.api_key:
         config.api_key_ciphertext = encrypt_secret(payload.api_key)
     if changed_credentials:
+        config.configuration_revision = int(config.configuration_revision or 0) + 1
         config.capability_tested_at = None
+        config.capability_report = {}
     config.enabled = payload.enabled
     config.auto_publish = payload.auto_publish and config.capability_tested_at is not None
     config.daily_budget_usd = payload.daily_budget_usd
     config.input_price_per_million = payload.input_price_per_million
     config.output_price_per_million = payload.output_price_per_million
+    config.requests_per_minute = payload.requests_per_minute
+    config.max_concurrent_reviews = payload.max_concurrent_reviews
     db.commit()
     return {"saved": True, "api_key": "configured" if config.api_key_ciphertext else "missing",
             "auto_publish": config.auto_publish, "test_required": config.capability_tested_at is None}
@@ -566,30 +585,21 @@ async def probe_ai(payload: AIProbeRequest, request: Request, user: User = Depen
     config = db.scalar(select(AIProviderConfig).order_by(AIProviderConfig.id).limit(1))
     if not config or not config.enabled or not config.api_key_ciphertext:
         raise HTTPException(status_code=409, detail="请先保存并启用模型配置")
-    from vuln_kb.security import decrypt_secret
-    base = config.base_url.rstrip("/")
-    endpoint = base if base.endswith("/chat/completions") else f"{base}/chat/completions"
     try:
-        async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
-            response = await client.post(endpoint, headers={"Authorization": f"Bearer {decrypt_secret(config.api_key_ciphertext)}"},
-                                         json={"model": config.model, "temperature": 0,
-                                               "response_format": {"type": "json_object"},
-                                               "messages": [{"role": "user", "content": "Return JSON only: {\"ok\": true}"}]})
-            response.raise_for_status()
-            data = response.json()
-        text = data["choices"][0]["message"]["content"]
-        import json
-        decoded = json.loads(text)
-        if not isinstance(decoded, dict):
-            raise ValueError("model output was not a JSON object")
+        from vuln_kb.security import decrypt_secret
+        provider = OpenAICompatibleProvider(config.base_url, config.model,
+                                            decrypt_secret(config.api_key_ciphertext), timeout=30)
+        report = await provider.probe()
         config.capability_tested_at = datetime.now(timezone.utc)
-        config.auto_publish = bool(payload.auto_publish)
+        config.capability_report = report
+        config.auto_publish = bool(payload.auto_publish and config.enabled)
         db.commit()
-        return {"ok": True, "model": config.model, "response_format": "json_object",
-                "auto_publish": config.auto_publish, "tested_at": config.capability_tested_at.isoformat(),
-                "response": str(text)[:300]}
+        return {"ok": True, **report, "auto_publish": config.auto_publish,
+                "tested_at": config.capability_tested_at.isoformat()}
+    except ProviderFailure as exc:
+        raise HTTPException(status_code=502, detail={"category": exc.category, "message": exc.message}) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"模型连接/能力探测失败：{str(exc)[:300]}")
+        raise HTTPException(status_code=502, detail={"category": "probe_failed", "message": "模型能力测试失败"}) from exc
 
 
 @app.post("/api/admin/probe/github")
@@ -651,11 +661,17 @@ def requeue_review(entry_id: str, request: Request, user: User = Depends(_editor
     if not entry or entry.status != "candidate":
         raise HTTPException(status_code=404, detail="候选记录不存在")
     materials = db.scalars(select(MaterialVariant).where(MaterialVariant.entry_id == entry_id,
-                                                         MaterialVariant.review_status == "pending")).all()
+                                                         MaterialVariant.review_status.in_(["pending", "review_error", "budget_paused"]))).all()
     if not materials:
         raise HTTPException(status_code=409, detail="没有待审核材料")
+    queued = db.scalars(select(Job).where(Job.kind == "review_material", Job.state.in_(["queued", "running"]))).all()
+    queued_ids = {(job.payload or {}).get("material_id") for job in queued}
     for material in materials:
-        enqueue(db, "review_material", {"material_id": material.id})
+        if material.id not in queued_ids:
+            enqueue(db, "review_material", {"material_id": material.id})
+            queued_ids.add(material.id)
+        material.review_status = "pending"
+    db.commit()
     return {"queued": len(materials)}
 
 

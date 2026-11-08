@@ -10,7 +10,11 @@ async function api(url, options = {}) {
   const res = await fetch(url, {...options, headers});
   if (res.status === 401) { location.href = '/login'; throw new Error('登录已失效'); }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.detail || `请求失败 (${res.status})`);
+  if (!res.ok) {
+    const detail = data.detail;
+    const message = typeof detail === 'string' ? detail : (detail?.message || detail?.category || `请求失败 (${res.status})`);
+    throw new Error(message);
+  }
   return data;
 }
 function logout() {
@@ -83,6 +87,11 @@ function resultCard(item) {
   const badges = document.createElement('div'); badges.className = 'badge-row';
   for (const value of [item.cve_id, item.vuln_type, `${item.material_count} 份材料`].filter(Boolean)) {
     const tag = document.createElement('span'); tag.className = 'tag'; tag.textContent = value; badges.append(tag);
+  }
+  const gradeLabels = {lab_verified: '独立实验验证', evidence_reviewed: '证据审核', material_reviewed: '材料审核'};
+  for (const grade of (item.evidence_grades || [])) {
+    const tag = document.createElement('span'); tag.className = 'tag grade-tag';
+    tag.textContent = gradeLabels[grade] || '等级待确认'; badges.append(tag);
   }
   article.append(head, badges);
   const summary = document.createElement('p'); summary.className = 'result-summary'; summary.textContent = item.summary || '暂无摘要'; article.append(summary);
@@ -238,7 +247,8 @@ async function saveAI() {
       name: 'default', base_url: $('ai-url').value.trim(), model: $('ai-model').value.trim(),
       api_key: $('ai-key').value || null, enabled: $('ai-enabled').checked, auto_publish: $('ai-autopublish').checked,
       daily_budget_usd: Number($('ai-budget').value), input_price_per_million: Number($('ai-input-price').value),
-      output_price_per_million: Number($('ai-output-price').value)
+      output_price_per_million: Number($('ai-output-price').value),
+      requests_per_minute: Number($('ai-rpm').value), max_concurrent_reviews: Number($('ai-concurrency').value)
     }});
     $('ai-key').value = ''; setNotice(`审核配置已保存（API Key: ${data.api_key}）。`);
   } catch (e) { setNotice(e.message, true); }

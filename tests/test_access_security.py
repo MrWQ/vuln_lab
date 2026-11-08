@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 import httpx
 from fastapi import HTTPException, Request
@@ -211,6 +212,45 @@ class AccessSecurityTests(unittest.TestCase):
         self.assertIn("vkb_session", cookies)
         self.assertTrue(cookies["vkb_session"])
         self.assertIn("vkb_csrf", cookies)
+
+    def test_ai_key_is_server_only_and_auto_publish_requires_current_capability_probe(self) -> None:
+        secret = "provider-key-never-return"
+        saved = asyncio.run(self._request("admin", "PUT", "/api/admin/ai", csrf=True, body={
+            "name": "default", "base_url": "http://localhost:9000/v1", "model": "fixture-model",
+            "api_key": secret, "enabled": True, "auto_publish": True, "daily_budget_usd": 2,
+            "input_price_per_million": 0, "output_price_per_million": 0,
+        }))
+        self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertNotIn(secret, saved.text)
+        self.assertFalse(saved.json()["auto_publish"])
+        self.assertTrue(saved.json()["test_required"])
+
+        class FakeProvider:
+            def __init__(self, base_url, model, api_key, *, timeout):
+                self.model = model
+                self.api_key = api_key
+
+            async def probe(self):
+                self.assert_secret = self.api_key
+                return {"model": self.model, "response_format": "json_object",
+                        "usage": {"input": 10, "output": 3}}
+
+        with patch.object(main, "OpenAICompatibleProvider", FakeProvider):
+            probed = asyncio.run(self._request("admin", "POST", "/api/admin/probe/ai", csrf=True,
+                                               body={"auto_publish": True}))
+        self.assertEqual(probed.status_code, 200, probed.text)
+        self.assertTrue(probed.json()["auto_publish"])
+        self.assertNotIn(secret, probed.text)
+        self.assertNotIn("capability_test", probed.text)
+
+        changed = asyncio.run(self._request("admin", "PUT", "/api/admin/ai", csrf=True, body={
+            "name": "default", "base_url": "http://localhost:9000/v1", "model": "changed-model",
+            "api_key": None, "enabled": True, "auto_publish": True, "daily_budget_usd": 2,
+            "input_price_per_million": 0, "output_price_per_million": 0,
+        }))
+        self.assertEqual(changed.status_code, 200, changed.text)
+        self.assertFalse(changed.json()["auto_publish"])
+        self.assertTrue(changed.json()["test_required"])
 
 
 if __name__ == "__main__":

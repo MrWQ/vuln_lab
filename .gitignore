@@ -4,9 +4,9 @@
 .uv-cache/
 __pycache__/
 *.py[cod]
-data/
+
 backups/
-*.db
+
 *.sqlite*
 .pytest_cache/
 

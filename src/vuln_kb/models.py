@@ -209,6 +209,7 @@ class AIReview(Base):
     __tablename__ = "ai_reviews"
     id: Mapped[int] = mapped_column(primary_key=True)
     material_id: Mapped[str] = mapped_column(ForeignKey("material_variants.id", ondelete="CASCADE"), index=True)
+    task_id: Mapped[str | None] = mapped_column(ForeignKey("ai_review_tasks.id", ondelete="SET NULL"), index=True)
     model: Mapped[str] = mapped_column(String(200))
     rubric_version: Mapped[str] = mapped_column(String(40), default="admission-1.2")
     decision: Mapped[str] = mapped_column(String(32), index=True)
@@ -276,8 +277,53 @@ class AIProviderConfig(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     auto_publish: Mapped[bool] = mapped_column(Boolean, default=True)
     capability_tested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    configuration_revision: Mapped[int] = mapped_column(Integer, default=1)
+    capability_report: Mapped[dict] = mapped_column(JSON, default=dict)
     daily_budget_usd: Mapped[float] = mapped_column(Float, default=5.0)
     input_price_per_million: Mapped[float] = mapped_column(Float, default=0.0)
     output_price_per_million: Mapped[float] = mapped_column(Float, default=0.0)
+    requests_per_minute: Mapped[int] = mapped_column(Integer, default=60)
+    max_concurrent_reviews: Mapped[int] = mapped_column(Integer, default=2)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class AIReviewTask(Base):
+    __tablename__ = "ai_review_tasks"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    material_id: Mapped[str] = mapped_column(ForeignKey("material_variants.id", ondelete="CASCADE"), index=True)
+    provider_id: Mapped[int | None] = mapped_column(ForeignKey("ai_provider_config.id", ondelete="SET NULL"), index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(64), unique=True)
+    input_sha256: Mapped[str] = mapped_column(String(64))
+    provider_revision: Mapped[int] = mapped_column(Integer)
+    rubric_version: Mapped[str] = mapped_column(String(80))
+    prompt_version: Mapped[str] = mapped_column(String(80))
+    state: Mapped[str] = mapped_column(String(24), default="queued", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    reserved_cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    actual_cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    result_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class AIUsageRecord(Base):
+    __tablename__ = "ai_usage_records"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("ai_review_tasks.id", ondelete="CASCADE"), index=True)
+    attempt: Mapped[int] = mapped_column(Integer)
+    provider_revision: Mapped[int] = mapped_column(Integer)
+    model: Mapped[str] = mapped_column(String(200))
+    state: Mapped[str] = mapped_column(String(24), default="reserved", index=True)
+    reserved_cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    actual_cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    error_category: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    __table_args__ = (UniqueConstraint("task_id", "attempt", name="uq_ai_usage_task_attempt"),)
 

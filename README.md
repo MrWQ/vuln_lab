@@ -62,6 +62,8 @@ PowerShell 可运行 `./ops/backup.ps1` 生成 PostgreSQL custom dump 和不可�
 
 AI 配置支持兼容 `POST {base_url}/chat/completions` 的服务：设置服务 URL、模型名、API Key、每日预算、输入/输出单价。Key 使用 `SECRET_KEY` 派生密钥加密存储；更换 `SECRET_KEY` 前需迁移或重新录入 API Key。通过审核与自动发布是两个独立开关；关闭自动发布时，管理员可以从候选区发布已通过 AI 材料审核的记录。
 
+远程模型主机需加入 `.env` 的 `AI_ALLOWED_HOSTS` 逗号分隔白名单（如 `api.example.com`）；本机模型 `localhost`、`127.0.0.1` 和 `::1` 默认允许。此白名单只控制服务端到模型 Provider 的连接，与来源 Adapter 的抓取主机白名单相互独立。
+
 首次使用模型前应确认该 Provider 支持 JSON response format。系统只会评估来源内容，不向模型授予工具调用权限；模型无法访问采集 worker、对象存储或公司网络的执行能力。
 
 ## API 摘要

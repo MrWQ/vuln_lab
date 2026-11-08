@@ -27,12 +27,17 @@ class MigrationTests(unittest.TestCase):
                 inspector = inspect(engine)
                 tables = set(inspector.get_table_names())
                 self.assertTrue({"organization_aliases", "product_aliases", "product_identifiers",
-                                 "product_material_applicability", "object_blobs", "publication_outbox"} <= tables)
+                                 "product_material_applicability", "object_blobs", "publication_outbox",
+                                 "ai_review_tasks", "ai_usage_records"} <= tables)
+                ai_columns = {column["name"] for column in inspector.get_columns("ai_provider_config")}
+                self.assertTrue({"configuration_revision", "capability_report", "requests_per_minute",
+                                 "max_concurrent_reviews"} <= ai_columns)
+                self.assertIn("task_id", {column["name"] for column in inspector.get_columns("ai_reviews")})
                 columns = {column["name"] for column in inspector.get_columns("knowledge_entries")}
                 self.assertIn("publication_revision", columns)
                 with engine.connect() as connection:
                     version = connection.execute(text("select version_num from alembic_version")).scalar_one()
-                self.assertEqual(version, "0003_domain_relations_outbox")
+                self.assertEqual(version, "0004_ai_review_pipeline")
             finally:
                 engine.dispose()
 
